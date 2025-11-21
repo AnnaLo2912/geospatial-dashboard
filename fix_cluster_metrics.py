@@ -9,6 +9,10 @@ from datetime import datetime, timedelta
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "NYC Taxi Analytics"
 
+# Disable caching for development
+app.css.config.serve_locally = True
+app.scripts.config.serve_locally = True
+
 # ============================================
 # DATA LOADING - Fast loading, only first N rows
 # ============================================
@@ -152,10 +156,13 @@ app.index_string = '''
         .stat-card {
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.6));
             border-radius: 16px;
-            padding: 24px 20px;
+            padding: 20px 16px;
             position: relative;
             overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.05);
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
         }
         .stat-card::before {
             content: '';
@@ -172,12 +179,12 @@ app.index_string = '''
         .stat-card:hover { border-color: rgba(59, 130, 246, 0.3); }
         
         .stat-value { 
-            font-size: 1.75rem; 
+            font-size: 1.8rem; 
             font-weight: 700; 
             color: #f8fafc;
             letter-spacing: -0.02em;
-            line-height: 1.2;
-            word-break: break-word;
+            line-height: 1;
+            margin: 8px 0;
         }
         .stat-label { 
             font-size: 0.75rem; 
@@ -254,6 +261,12 @@ app.index_string = '''
         }
         .toggle-btn:hover { color: #e2e8f0; }
         .toggle-btn.active { background: #3b82f6; color: #fff; }
+        
+        #map-info-btn:hover {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(99, 102, 241, 0.3)) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
         
         .location-panel {
             background: rgba(30, 41, 59, 0.6);
@@ -430,17 +443,17 @@ app.layout = html.Div([
                     html.Div([
                         html.Div([
                             html.Div(className='stat-icon', style={'background': 'rgba(59,130,246,0.1)', 'color': '#3b82f6'}, children="🚕"),
-                            html.Div(id='stat-trips', className='stat-value'),
+                            html.Div(id='stat-trips', className='stat-value', children="0"),
                             html.Div("Trips", className='stat-label')
                         ], className='stat-card'),
                         html.Div([
                             html.Div(className='stat-icon', style={'background': 'rgba(139,92,246,0.1)', 'color': '#8b5cf6'}, children="📍"),
-                            html.Div(id='stat-clusters', className='stat-value'),
+                            html.Div(id='stat-clusters', className='stat-value', children="0"),
                             html.Div("Clusters", className='stat-label')
                         ], className='stat-card'),
                         html.Div([
                             html.Div(className='stat-icon', style={'background': 'rgba(16,185,129,0.1)', 'color': '#10b981'}, children="💰"),
-                            html.Div(id='stat-fare', className='stat-value'),
+                            html.Div(id='stat-fare', className='stat-value', children="$0"),
                             html.Div("Avg Fare", className='stat-label')
                         ], className='stat-card'),
                     ], style={'display': 'grid', 'gridTemplateColumns': 'repeat(3, 1fr)', 'gap': '12px'})
@@ -521,9 +534,24 @@ app.layout = html.Div([
             html.Div([
                 html.Div([
                     html.Div([
-                        html.Span("Map", style={'fontSize': '0.8rem', 'fontWeight': '600', 'color': '#f8fafc'}),
-                        html.Span(" — Click points for location details", style={'fontSize': '0.75rem', 'color': '#64748b'})
-                    ], style={'marginBottom': '16px'}),
+                        html.Span("Map", style={'fontSize': '0.85rem', 'fontWeight': '600', 'color': '#f8fafc'}),
+                    ], style={'marginBottom': '8px'}),
+                    html.Div([
+                        html.Span("Click points for location details", style={'fontSize': '0.7rem', 'color': '#64748b', 'marginRight': '12px'}),
+                        html.Button("ℹ️ Explain", id='map-info-btn', n_clicks=0, style={
+                            'background': 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.2))',
+                            'border': '1px solid rgba(59, 130, 246, 0.4)',
+                            'color': '#60a5fa',
+                            'padding': '6px 12px',
+                            'borderRadius': '8px',
+                            'fontSize': '0.75rem',
+                            'cursor': 'pointer',
+                            'fontFamily': 'Plus Jakarta Sans',
+                            'fontWeight': '600',
+                            'transition': 'all 0.2s'
+                        })
+                    ], style={'display': 'flex', 'alignItems': 'center', 'marginBottom': '12px'}),
+                    html.Div(id='map-explanation', style={'marginBottom': '12px'}),
                     html.Div([
                         dcc.Loading(
                             dcc.Graph(id='main-map', config={'displayModeBar': True, 'scrollZoom': True}, style={'height': '420px'}),
@@ -563,6 +591,114 @@ app.layout = html.Div([
 # ============================================
 # CALLBACKS
 # ============================================
+
+@app.callback(
+    Output('map-explanation', 'children'),
+    [Input('map-info-btn', 'n_clicks'),
+     Input('map-type', 'value')],
+    [State('map-explanation', 'children')]
+)
+def toggle_map_explanation(n_clicks, map_type, current_content):
+    ctx = callback_context
+    
+    # Determine if button was clicked
+    if not ctx.triggered:
+        return None
+    
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    # If map type changed, hide explanation
+    if trigger == 'map-type':
+        return None
+    
+    # If button clicked, toggle explanation
+    if trigger == 'map-info-btn' and n_clicks:
+        # If already showing, hide it
+        if current_content:
+            return None
+        
+        # Show explanation based on map type
+        explanations = {
+            'scatter': {
+                'title': '🔵 Scatter Plot - Individual Pickups',
+                'what': 'Each blue dot represents one taxi pickup location.',
+                'how': 'Shows up to 5,000 randomly sampled pickup points from your filtered data.',
+                'interpret': [
+                    '• Dense clusters of dots = High pickup areas (like Manhattan)',
+                    '• Sparse dots = Lower pickup frequency',
+                    '• Empty spaces = Areas with no taxi service'
+                ],
+                'use': 'Best for seeing the exact distribution of individual trips and identifying specific pickup patterns.'
+            },
+            'heatmap': {
+                'title': '🔥 Heatmap - Pickup Density',
+                'what': 'Colors show how concentrated taxi pickups are in each area.',
+                'how': 'Uses a continuous color gradient from cool (blue/green) to hot (yellow/red).',
+                'interpret': [
+                    '• Red/Yellow = Extremely high pickup density',
+                    '• Green/Blue = Medium pickup density',
+                    '• No color = Very few or no pickups',
+                    '• Smooth gradients show how density changes across space'
+                ],
+                'use': 'Best for quickly identifying hotspots and understanding overall demand patterns across the city.'
+            },
+            'clusters': {
+                'title': '📍 DBSCAN Clusters - Pickup Hotspots',
+                'what': 'Colored circles show groups of pickups that are close together (within 60 meters).',
+                'how': 'DBSCAN algorithm grouped 200,000 pickup points into 149 distinct clusters.',
+                'interpret': [
+                    '• Larger circles = More pickups in that cluster',
+                    '• Different colors = Different cluster groups',
+                    '• Each circle center = Average location of all pickups in that cluster',
+                    '• Missing areas = Too few pickups to form a cluster'
+                ],
+                'use': 'Best for understanding distinct pickup zones and comparing activity levels between different areas.'
+            }
+        }
+        
+        info = explanations.get(map_type, explanations['scatter'])
+        
+        return html.Div([
+            html.Div([
+                html.H4(info['title'], style={
+                    'fontSize': '0.9rem',
+                    'fontWeight': '600',
+                    'color': '#f8fafc',
+                    'marginBottom': '8px'
+                }),
+                html.P([
+                    html.Strong('What it shows: ', style={'color': '#3b82f6'}),
+                    info['what']
+                ], style={'fontSize': '0.8rem', 'color': '#cbd5e1', 'marginBottom': '6px'}),
+                
+                html.P([
+                    html.Strong('How it works: ', style={'color': '#8b5cf6'}),
+                    info['how']
+                ], style={'fontSize': '0.8rem', 'color': '#cbd5e1', 'marginBottom': '6px'}),
+                
+                html.Div([
+                    html.Strong('How to interpret:', style={'color': '#10b981', 'fontSize': '0.8rem'}),
+                    html.Ul([
+                        html.Li(point, style={'fontSize': '0.75rem', 'color': '#94a3b8', 'marginBottom': '3px'})
+                        for point in info['interpret']
+                    ], style={'marginTop': '4px', 'marginLeft': '16px', 'marginBottom': '6px'})
+                ]),
+                
+                html.P([
+                    html.Strong('Best use: ', style={'color': '#f59e0b'}),
+                    info['use']
+                ], style={'fontSize': '0.8rem', 'color': '#cbd5e1', 'marginBottom': '0'}),
+                
+            ], style={
+                'background': 'rgba(30, 41, 59, 0.8)',
+                'border': '1px solid rgba(59, 130, 246, 0.3)',
+                'borderLeft': '3px solid #3b82f6',
+                'borderRadius': '8px',
+                'padding': '12px 14px'
+            })
+        ])
+    
+    return None
 
 @app.callback(
     Output('trip-count-display', 'children'),
@@ -772,7 +908,13 @@ def update_stats(start, end, time_filter, single_class):
     if filtered is None or len(filtered) == 0:
         return "0", str(len(metrics_df)) if metrics_df is not None else "—", "—"
     
-    trips = f"{len(filtered):,}"
+    # Format trip count - use K for thousands
+    trip_count = len(filtered)
+    if trip_count >= 1000:
+        trips = f"{trip_count/1000:.1f}K"
+    else:
+        trips = f"{trip_count:,}"
+    
     clusters = str(len(metrics_df)) if metrics_df is not None else "—"
     avg_fare = f"${filtered['total_amount'].mean():.2f}" if 'total_amount' in filtered.columns else "—"
     
@@ -872,17 +1014,58 @@ def update_map(start, end, time_filter, map_type, single_class):
             
             if lat_col and lon_col:
                 count_col = get_count_column(metrics_df)
-                fig = px.scatter_mapbox(
-                    metrics_df,
-                    lat=lat_col,
-                    lon=lon_col,
-                    size=count_col if count_col else None,
-                    color=count_col if count_col else None,
-                    hover_data={count_col: True} if count_col else {},
-                    zoom=10,
-                    height=420,
-                    color_continuous_scale='Viridis'
-                )
+                
+                # Create figure with manual trace for better control
+                fig = go.Figure()
+                
+                # Add cluster circles with distinct colors
+                if count_col:
+                    # Sort by size to draw largest first (background)
+                    sorted_metrics = metrics_df.sort_values(count_col, ascending=False)
+                    
+                    # Normalize sizes for better visualization
+                    max_points = sorted_metrics[count_col].max()
+                    min_points = sorted_metrics[count_col].min()
+                    
+                    # Create color palette - distinct colors for top clusters
+                    colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', 
+                             '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1']
+                    
+                    for idx, row in sorted_metrics.iterrows():
+                        # Calculate marker size (10-50 range based on points)
+                        size_normalized = (row[count_col] - min_points) / (max_points - min_points)
+                        marker_size = 15 + (size_normalized * 35)  # 15-50 pixel range
+                        
+                        # Get color (cycle through palette)
+                        color_idx = list(sorted_metrics.index).index(idx) % len(colors)
+                        marker_color = colors[color_idx]
+                        
+                        # Add cluster as individual trace
+                        fig.add_trace(go.Scattermapbox(
+                            lat=[row[lat_col]],
+                            lon=[row[lon_col]],
+                            mode='markers',
+                            marker=dict(
+                                size=marker_size,
+                                color=marker_color,
+                                opacity=0.7,
+                                sizemode='diameter'
+                            ),
+                            text=f"Cluster {idx}<br>{row[count_col]:,} pickups",
+                            hoverinfo='text',
+                            name=f"Cluster {idx}",
+                            showlegend=False
+                        ))
+                else:
+                    # Fallback without size data
+                    fig.add_trace(go.Scattermapbox(
+                        lat=metrics_df[lat_col],
+                        lon=metrics_df[lon_col],
+                        mode='markers',
+                        marker=dict(size=15, color='#3b82f6', opacity=0.7),
+                        text=['Cluster' for _ in range(len(metrics_df))],
+                        hoverinfo='text'
+                    ))
             else:
                 fig = go.Figure()
                 fig.add_annotation(
