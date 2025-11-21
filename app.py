@@ -10,29 +10,25 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "NYC Taxi Analytics"
 
 # ============================================
-# DATA LOADING - Fast loading, only first N rows
+# DATA LOADING
 # ============================================
-SAMPLE_SIZE = 200000  # Match the DBSCAN sample size
+SAMPLE_SIZE = 200000
 
 def load_data():
     """Load taxi data - matching DBSCAN sample size"""
     metrics_df = None
     taxi_df = None
     
-    # Load cluster metrics from outputs folder
     try:
         metrics_df = pd.read_csv('outputs/dbscan_cluster_metrics.csv')
         print(f"✓ Loaded {len(metrics_df)} clusters from DBSCAN analysis")
         print(f"  Columns: {list(metrics_df.columns)}")
-        
-        # Show first few rows to understand structure
         if len(metrics_df) > 0:
             print(f"  Sample data:")
             print(metrics_df.head(2))
     except Exception as e:
         print(f"⚠ Could not load cluster metrics: {e}")
     
-    # Load taxi data from outputs folder
     try:
         print(f"\nLoading {SAMPLE_SIZE:,} taxi trips from outputs folder...")
         taxi_df = pd.read_csv(
@@ -52,8 +48,6 @@ def load_data():
         
         if 'pickup_datetime' in taxi_df.columns:
             print(f"✓ Date range: {taxi_df['pickup_datetime'].min()} to {taxi_df['pickup_datetime'].max()}")
-            
-            # Show breakdown by month
             monthly_counts = taxi_df.groupby(taxi_df['pickup_datetime'].dt.to_period('M')).size().sort_index()
             print(f"\n📊 Data breakdown by month:")
             for period, count in monthly_counts.items():
@@ -70,12 +64,10 @@ def load_data():
 def detect_available_dates(df):
     """Dynamically detect available date ranges from the data"""
     if df is None or 'pickup_datetime' not in df.columns:
-        # Fallback to default
         return [
             {'start': datetime(2015, 1, 1).date(), 'end': datetime(2015, 1, 31).date(), 'label': 'January 2015'}
         ]
     
-    # Group by year-month
     df['year_month'] = df['pickup_datetime'].dt.to_period('M')
     available_periods = df['year_month'].unique()
     
@@ -84,8 +76,6 @@ def detect_available_dates(df):
         period_data = df[df['year_month'] == period]
         start_date = period_data['pickup_datetime'].min().date()
         end_date = period_data['pickup_datetime'].max().date()
-        
-        # Format label
         month_name = period.strftime('%B %Y')
         
         date_ranges.append({
@@ -96,23 +86,28 @@ def detect_available_dates(df):
     
     return date_ranges
 
-metrics_df, taxi_df = load_data()
+def format_number(num):
+    """Format large numbers to fit nicely in stat boxes"""
+    if num >= 1000000:
+        return f"{num/1000000:.1f}M"
+    elif num >= 1000:
+        return f"{num/1000:.1f}K"
+    else:
+        return f"{int(num)}"
 
-# Dynamically detect available dates from the actual data
+metrics_df, taxi_df = load_data()
 AVAILABLE_DATES = detect_available_dates(taxi_df)
 
-# Get actual trip count and date range
 actual_trip_count = len(taxi_df) if taxi_df is not None else SAMPLE_SIZE
 print(f"\n✓ Dashboard will display {len(AVAILABLE_DATES)} date range(s)")
 for i, date_range in enumerate(AVAILABLE_DATES):
     print(f"   [{i}] {date_range['label']}: {date_range['start']} to {date_range['end']}")
 
-# Use first available date range as default
 data_min_date = AVAILABLE_DATES[0]['start']
 data_max_date = AVAILABLE_DATES[0]['end']
 
 # ============================================
-# STYLING - Modern, unique design
+# STYLING
 # ============================================
 app.index_string = '''
 <!DOCTYPE html>
@@ -152,10 +147,13 @@ app.index_string = '''
         .stat-card {
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.6));
             border-radius: 16px;
-            padding: 24px 20px;
+            padding: 20px 18px;
             position: relative;
             overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.05);
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
         }
         .stat-card::before {
             content: '';
@@ -176,15 +174,15 @@ app.index_string = '''
             font-weight: 700; 
             color: #f8fafc;
             letter-spacing: -0.02em;
-            line-height: 1.2;
-            word-break: break-word;
+            line-height: 1.1;
+            margin-top: auto;
         }
         .stat-label { 
-            font-size: 0.75rem; 
+            font-size: 0.7rem; 
             color: #64748b; 
             text-transform: uppercase; 
             letter-spacing: 0.08em;
-            margin-top: 4px;
+            margin-top: 6px;
         }
         .stat-icon {
             width: 44px;
@@ -194,7 +192,7 @@ app.index_string = '''
             align-items: center;
             justify-content: center;
             font-size: 1.25rem;
-            margin-bottom: 16px;
+            margin-bottom: auto;
         }
         
         .section-label {
@@ -204,6 +202,23 @@ app.index_string = '''
             text-transform: uppercase;
             letter-spacing: 0.1em;
             margin-bottom: 16px;
+        }
+        
+        .info-box {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 3px solid #3b82f6;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: #cbd5e1;
+        }
+        .info-box-title {
+            font-weight: 600;
+            color: #3b82f6;
+            margin-bottom: 4px;
+            font-size: 0.9rem;
         }
         
         .Select-control { 
@@ -332,11 +347,12 @@ app.index_string = '''
         }
         
         @media (max-width: 1024px) {
-            .grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+            .grid-3 { grid-template-columns: repeat(2, 1fr) !important; }
             .flex-row { flex-direction: column !important; gap: 16px !important; }
         }
         @media (max-width: 640px) {
-            .grid-4 { grid-template-columns: 1fr !important; }
+            .grid-3 { grid-template-columns: 1fr !important; }
+            .stat-value { font-size: 1.5rem; }
         }
     </style>
 </head>
@@ -353,6 +369,7 @@ app.index_string = '''
 app.layout = html.Div([
     dcc.Store(id='tour-shown', storage_type='local', data=False),
     
+    # Tour Overlay
     html.Div([
         html.Div([
             html.H2("Welcome to NYC Taxi Analytics", className='tour-title'),
@@ -396,7 +413,9 @@ app.layout = html.Div([
         ], className='tour-modal')
     ], id='tour-overlay', className='tour-overlay', style={'display': 'flex'}),
     
+    # Main App
     html.Div([
+        # Header
         html.Div([
             html.Div([
                 html.Div([
@@ -423,8 +442,11 @@ app.layout = html.Div([
             'padding': '16px 32px', 'borderBottom': '1px solid rgba(255,255,255,0.05)'
         }),
         
+        # Main Content
         html.Div([
+            # Left Sidebar
             html.Div([
+                # Stats
                 html.Div([
                     html.Div("Overview", className='section-label'),
                     html.Div([
@@ -443,9 +465,10 @@ app.layout = html.Div([
                             html.Div(id='stat-fare', className='stat-value'),
                             html.Div("Avg Fare", className='stat-label')
                         ], className='stat-card'),
-                    ], style={'display': 'grid', 'gridTemplateColumns': 'repeat(3, 1fr)', 'gap': '12px'})
+                    ], style={'display': 'grid', 'gridTemplateColumns': 'repeat(3, 1fr)', 'gap': '12px'}, className='grid-3')
                 ], style={'marginBottom': '28px'}),
                 
+                # Filters
                 html.Div([
                     html.Div("Filters", className='section-label'),
                     
@@ -518,12 +541,18 @@ app.layout = html.Div([
                 ], className='glass-card')
             ], style={'width': '320px', 'flexShrink': '0', 'marginRight': '24px'}),
             
+            # Main Content Area
             html.Div([
+                # Map
                 html.Div([
                     html.Div([
                         html.Span("Map", style={'fontSize': '0.8rem', 'fontWeight': '600', 'color': '#f8fafc'}),
                         html.Span(" — Click points for location details", style={'fontSize': '0.75rem', 'color': '#64748b'})
                     ], style={'marginBottom': '16px'}),
+                    
+                    # Info Box - dynamically updated based on map type
+                    html.Div(id='map-info-box'),
+                    
                     html.Div([
                         dcc.Loading(
                             dcc.Graph(id='main-map', config={'displayModeBar': True, 'scrollZoom': True}, style={'height': '420px'}),
@@ -533,6 +562,7 @@ app.layout = html.Div([
                     html.Div(id='location-info')
                 ], className='glass-card', style={'marginBottom': '20px'}),
                 
+                # Charts Row
                 html.Div([
                     html.Div([
                         html.Div("Trips by Date", style={'fontSize': '0.75rem', 'fontWeight': '600', 'color': '#94a3b8', 'marginBottom': '12px', 'textTransform': 'uppercase', 'letterSpacing': '0.05em'}),
@@ -545,6 +575,7 @@ app.layout = html.Div([
                     ], className='glass-card', style={'flex': '1', 'marginLeft': '10px'})
                 ], style={'display': 'flex', 'marginBottom': '20px'}, className='flex-row'),
                 
+                # Cluster Chart
                 html.Div([
                     html.Div("Cluster Distribution", style={'fontSize': '0.75rem', 'fontWeight': '600', 'color': '#94a3b8', 'marginBottom': '12px', 'textTransform': 'uppercase', 'letterSpacing': '0.05em'}),
                     dcc.Loading(
@@ -559,6 +590,75 @@ app.layout = html.Div([
         
     ], className='app-container')
 ])
+
+# ============================================
+# HELPER FUNCTIONS
+# ============================================
+
+def filter_data(df, start_date, end_date, time_filter, single_mode=False):
+    if df is None or 'pickup_datetime' not in df.columns:
+        return df
+    
+    filtered = df.copy()
+    
+    if start_date:
+        start = pd.to_datetime(start_date).date()
+        end = pd.to_datetime(end_date).date() if end_date and not single_mode else start
+        
+        mask = (filtered['pickup_datetime'].dt.date >= start) & (filtered['pickup_datetime'].dt.date <= end)
+        filtered = filtered[mask]
+    
+    if time_filter != 'all' and len(filtered) > 0:
+        hour = filtered['pickup_datetime'].dt.hour
+        if time_filter == 'morning_rush':
+            filtered = filtered[(hour >= 6) & (hour < 10)]
+        elif time_filter == 'midday':
+            filtered = filtered[(hour >= 10) & (hour < 16)]
+        elif time_filter == 'evening_rush':
+            filtered = filtered[(hour >= 16) & (hour < 20)]
+        elif time_filter == 'night':
+            filtered = filtered[(hour >= 20) | (hour < 6)]
+    
+    return filtered
+
+def get_count_column(df):
+    """Find the count column in metrics dataframe"""
+    if df is None:
+        return None
+    for col in ['points', 'point_count', 'count', 'size', 'num_points']:
+        if col in df.columns:
+            return col
+    num_cols = df.select_dtypes(include=[np.number]).columns
+    return num_cols[0] if len(num_cols) > 0 else None
+
+def get_location_name(lat, lon):
+    """Get location name from coordinates using Nominatim"""
+    try:
+        from urllib.request import urlopen, Request
+        import json
+        
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
+        req = Request(url, headers={'User-Agent': 'NYC-Taxi-Analytics/1.0'})
+        
+        with urlopen(req, timeout=3) as response:
+            data = json.loads(response.read())
+        
+        address = data.get('address', {})
+        neighborhood = address.get('neighbourhood') or address.get('suburb') or address.get('city_district')
+        city = address.get('city') or address.get('town') or address.get('village')
+        
+        if neighborhood and city:
+            return f"{neighborhood}, {city}"
+        elif neighborhood:
+            return neighborhood
+        elif city:
+            return city
+        else:
+            display_name = data.get('display_name', '')
+            return display_name.split(',')[0] if display_name else None
+    except Exception as e:
+        print(f"Location lookup error: {e}")
+        return None
 
 # ============================================
 # CALLBACKS
@@ -624,7 +724,6 @@ def update_all_date_controls(month_idx, single_clicks, range_clicks, current_sta
     ctx = callback_context
     date_range = AVAILABLE_DATES[month_idx]
     
-    # Default values
     start = date_range['start']
     end = date_range['end']
     single_active = 'toggle-btn'
@@ -632,20 +731,16 @@ def update_all_date_controls(month_idx, single_clicks, range_clicks, current_sta
     end_visible = {'display': 'block'}
     label = 'Start'
     
-    # Determine current mode
     is_single_mode = single_class and 'active' in single_class
     
-    # Check what triggered the callback
     if ctx.triggered:
         trigger = ctx.triggered[0]['prop_id'].split('.')[0]
         
-        # Toggle mode buttons
         if trigger == 'mode-single':
             single_active = 'toggle-btn active'
             range_active = 'toggle-btn'
             end_visible = {'display': 'none'}
             label = 'Date'
-            # Keep current date if available, otherwise use range start
             if current_start:
                 start = pd.to_datetime(current_start).date()
                 end = start
@@ -662,7 +757,6 @@ def update_all_date_controls(month_idx, single_clicks, range_clicks, current_sta
             end = date_range['end']
             
         elif trigger == 'month-selector':
-            # Keep the current mode when changing months
             if is_single_mode:
                 single_active = 'toggle-btn active'
                 range_active = 'toggle-btn'
@@ -691,73 +785,6 @@ def update_all_date_controls(month_idx, single_clicks, range_clicks, current_sta
         label
     )
 
-def filter_data(df, start_date, end_date, time_filter, single_mode=False):
-    if df is None or 'pickup_datetime' not in df.columns:
-        return df
-    
-    filtered = df.copy()
-    
-    if start_date:
-        start = pd.to_datetime(start_date).date()
-        end = pd.to_datetime(end_date).date() if end_date and not single_mode else start
-        
-        mask = (filtered['pickup_datetime'].dt.date >= start) & (filtered['pickup_datetime'].dt.date <= end)
-        filtered = filtered[mask]
-    
-    if time_filter != 'all' and len(filtered) > 0:
-        hour = filtered['pickup_datetime'].dt.hour
-        if time_filter == 'morning_rush':
-            filtered = filtered[(hour >= 6) & (hour < 10)]
-        elif time_filter == 'midday':
-            filtered = filtered[(hour >= 10) & (hour < 16)]
-        elif time_filter == 'evening_rush':
-            filtered = filtered[(hour >= 16) & (hour < 20)]
-        elif time_filter == 'night':
-            filtered = filtered[(hour >= 20) | (hour < 6)]
-    
-    return filtered
-
-def get_count_column(df):
-    """Find the count column in metrics dataframe"""
-    if df is None:
-        return None
-    for col in ['points', 'point_count', 'count', 'size', 'num_points']:
-        if col in df.columns:
-            return col
-    num_cols = df.select_dtypes(include=[np.number]).columns
-    return num_cols[0] if len(num_cols) > 0 else None
-
-def get_location_name(lat, lon):
-    """Get location name from coordinates using Nominatim"""
-    try:
-        from urllib.request import urlopen, Request
-        import json
-        
-        # Add user agent to avoid 403 errors
-        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
-        req = Request(url, headers={'User-Agent': 'NYC-Taxi-Analytics/1.0'})
-        
-        with urlopen(req, timeout=3) as response:
-            data = json.loads(response.read())
-        
-        address = data.get('address', {})
-        neighborhood = address.get('neighbourhood') or address.get('suburb') or address.get('city_district')
-        city = address.get('city') or address.get('town') or address.get('village')
-        
-        if neighborhood and city:
-            return f"{neighborhood}, {city}"
-        elif neighborhood:
-            return neighborhood
-        elif city:
-            return city
-        else:
-            # Fallback to first part of display name
-            display_name = data.get('display_name', '')
-            return display_name.split(',')[0] if display_name else None
-    except Exception as e:
-        print(f"Location lookup error: {e}")
-        return None
-
 @app.callback(
     [Output('stat-trips', 'children'),
      Output('stat-clusters', 'children'),
@@ -772,11 +799,43 @@ def update_stats(start, end, time_filter, single_class):
     if filtered is None or len(filtered) == 0:
         return "0", str(len(metrics_df)) if metrics_df is not None else "—", "—"
     
-    trips = f"{len(filtered):,}"
+    # Format numbers to fit in stat boxes
+    trips = format_number(len(filtered))
     clusters = str(len(metrics_df)) if metrics_df is not None else "—"
-    avg_fare = f"${filtered['total_amount'].mean():.2f}" if 'total_amount' in filtered.columns else "—"
     
-    return trips, clusters, avg_fare
+    if 'total_amount' in filtered.columns:
+        avg_fare = filtered['total_amount'].mean()
+        avg_fare_str = f"${avg_fare:.2f}"
+    else:
+        avg_fare_str = "—"
+    
+    return trips, clusters, avg_fare_str
+
+@app.callback(
+    Output('map-info-box', 'children'),
+    Input('map-type', 'value')
+)
+def update_map_info(map_type):
+    """Display helpful information about the current map view"""
+    if map_type == 'scatter':
+        return html.Div([
+            html.Div("📊 Scatter Plot", className='info-box-title'),
+            html.Div("Each blue dot represents an individual taxi pickup location. Clustered dots indicate popular pickup areas. Click any point to see its exact neighborhood and coordinates.")
+        ], className='info-box')
+    
+    elif map_type == 'heatmap':
+        return html.Div([
+            html.Div("🔥 Density Heatmap", className='info-box-title'),
+            html.Div("Warmer colors (red/orange) show areas with high pickup density, while cooler colors (blue/purple) indicate fewer pickups. This helps identify the busiest zones across NYC.")
+        ], className='info-box')
+    
+    elif map_type == 'clusters':
+        return html.Div([
+            html.Div("🎯 DBSCAN Clusters", className='info-box-title'),
+            html.Div("Each circle represents a cluster of nearby pickup points identified by the DBSCAN algorithm. Larger circles indicate more pickups in that cluster. This reveals distinct pickup hotspots.")
+        ], className='info-box')
+    
+    return None
 
 @app.callback(
     Output('main-map', 'figure'),
@@ -856,7 +915,6 @@ def update_map(start, end, time_filter, map_type, single_class):
     
     else:
         if metrics_df is not None and len(metrics_df) > 0:
-            # Check which lat/lon columns exist
             lat_col = None
             lon_col = None
             
@@ -927,7 +985,6 @@ def display_click_info(click_data):
         lon = point.get('lon')
         
         if lat and lon:
-            # Try to get location name
             location_name = get_location_name(lat, lon)
             
             return html.Div([
@@ -935,7 +992,6 @@ def display_click_info(click_data):
                     html.Span("📍 Selected Location", style={'fontWeight': '600', 'fontSize': '0.85rem', 'color': '#f8fafc'}),
                 ], style={'marginBottom': '8px'}),
                 
-                # Show location name if available
                 html.Div([
                     html.Span(f"{location_name}", style={'color': '#e2e8f0', 'fontSize': '0.9rem', 'fontWeight': '500', 'display': 'block', 'marginBottom': '6px'}),
                 ], style={'marginBottom': '6px'}) if location_name else None,
@@ -987,12 +1043,10 @@ def update_time_chart(start, end, time_filter, single_class):
             )
             return fig
         
-        # For single day, show hourly breakdown instead of daily
         if single_mode:
             hourly = filtered.groupby(filtered['pickup_datetime'].dt.hour).size().reset_index()
             hourly.columns = ['hour', 'trips']
             
-            # Ensure all hours are present
             all_hours = pd.DataFrame({'hour': range(24)})
             hourly = all_hours.merge(hourly, on='hour', how='left').fillna(0)
             
@@ -1025,7 +1079,6 @@ def update_time_chart(start, end, time_filter, single_class):
                 bargap=0.15
             )
         else:
-            # Multiple days - show daily trend
             daily = filtered.groupby(filtered['pickup_datetime'].dt.date).size().reset_index()
             daily.columns = ['date', 'trips']
             
@@ -1114,7 +1167,6 @@ def update_hourly_chart(start, end, time_filter, single_class):
         hourly = filtered.groupby(filtered['pickup_datetime'].dt.hour).size().reset_index()
         hourly.columns = ['hour', 'trips']
         
-        # Ensure all hours are present
         all_hours = pd.DataFrame({'hour': range(24)})
         hourly = all_hours.merge(hourly, on='hour', how='left').fillna(0)
         
@@ -1226,11 +1278,9 @@ def update_cluster_chart(_):
             )
             return fig
         
-        # Sort by count and take top 12 clusters
         top_clusters = metrics_df.nlargest(12, count_col).copy()
         top_clusters = top_clusters.sort_values(count_col, ascending=True)
         
-        # Create cluster labels - try different column names
         if 'cluster_id' in top_clusters.columns:
             cluster_ids = top_clusters['cluster_id'].astype(str)
         elif 'cluster' in top_clusters.columns:
@@ -1240,7 +1290,6 @@ def update_cluster_chart(_):
         
         top_clusters['label'] = 'Cluster ' + cluster_ids
         
-        # Create color scale from values
         colors = ['#f59e0b', '#f97316', '#ef4444', '#ec4899', '#d946ef', '#c026d3', 
                   '#a855f7', '#9333ea', '#7c3aed', '#6366f1', '#3b82f6', '#0ea5e9']
         
