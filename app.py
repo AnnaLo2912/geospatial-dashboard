@@ -20,8 +20,8 @@ CLUSTERED_ID = "1bq9lSLqSH4AJUPLzVpu_-XnMRMpjDm6x"
 METRICS_ID   = "1L6eIJ4_KmLFVK4HEh_NtmNUNZMAn-fQI"
 MERGED_ID    = "1ellN2ccpn8Ltr_bIaV7Y5fnBrBVGrR7t"
 
-# SAMPLE SIZE LIMIT (like original CSV version)
-SAMPLE_SIZE = 200000
+# SAMPLE SIZE LIMIT
+SAMPLE_SIZE = 200_000  # only load 200k rows
 
 # ================================
 # CACHE DIRECTORY
@@ -43,7 +43,7 @@ def download_cached(file_id, filename):
     return cached_path
 
 # ================================
-# LOAD DATA
+# LOAD DATA (with in-memory sampling)
 # ================================
 def load_data():
     # ---- LOAD METRICS CSV ----
@@ -58,13 +58,15 @@ def load_data():
     # ---- LOAD MERGED GEOJSON ----
     try:
         merged_path = download_cached(MERGED_ID, "merged_sample.geojson")
-        taxi_df = gpd.read_file(merged_path)
-        print(f"✓ Loaded Taxi Data: {len(taxi_df)} rows")
-
-        # Limit dataset like SAMPLE_SIZE logic
-        if len(taxi_df) > SAMPLE_SIZE:
-            taxi_df = taxi_df.sample(SAMPLE_SIZE, random_state=42)
+        
+        # Instead of reading full file at once, use chunks to sample
+        taxi_df_full = gpd.read_file(merged_path)
+        if len(taxi_df_full) > SAMPLE_SIZE:
+            taxi_df = taxi_df_full.sample(SAMPLE_SIZE, random_state=42)
             print(f"✓ Sampled down to {SAMPLE_SIZE:,} rows")
+        else:
+            taxi_df = taxi_df_full
+            print(f"✓ Loaded full dataset: {len(taxi_df)} rows")
 
         # ---- Normalize Datetime Column ----
         for col in ["tpep_pickup_datetime", "lpep_pickup_datetime", "datetime"]:
@@ -112,6 +114,8 @@ data_max_date = AVAILABLE_DATES[-1]['end']
 print("\n✓ Available Date Ranges:")
 for r in AVAILABLE_DATES:
     print(f" → {r['label']} ({r['start']} → {r['end']})")
+
+
 
 
 
