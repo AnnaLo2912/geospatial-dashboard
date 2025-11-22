@@ -1,0 +1,11 @@
+dash
+pandas
+numpy
+plotly
+gunicorn
+geopandas
+pyproj
+shapely
+scikit-learn
+contextily
+matplotlib
