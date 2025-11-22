@@ -147,13 +147,14 @@ app.index_string = '''
         .stat-card {
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.6));
             border-radius: 16px;
-            padding: 20px 18px;
+            padding: 18px 16px;
             position: relative;
             overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.05);
-            min-height: 120px;
+            min-height: 115px;
             display: flex;
             flex-direction: column;
+            justify-content: space-between;
         }
         .stat-card::before {
             content: '';
@@ -170,29 +171,31 @@ app.index_string = '''
         .stat-card:hover { border-color: rgba(59, 130, 246, 0.3); }
         
         .stat-value { 
-            font-size: 1.75rem; 
+            font-size: 1.65rem; 
             font-weight: 700; 
             color: #f8fafc;
-            letter-spacing: -0.02em;
-            line-height: 1.1;
-            margin-top: auto;
+            letter-spacing: -0.025em;
+            line-height: 1;
+            margin: 8px 0 4px 0;
+            word-break: break-all;
+            max-width: 100%;
         }
         .stat-label { 
-            font-size: 0.7rem; 
+            font-size: 0.68rem; 
             color: #64748b; 
             text-transform: uppercase; 
             letter-spacing: 0.08em;
-            margin-top: 6px;
+            margin-top: 2px;
         }
         .stat-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
+            width: 40px;
+            height: 40px;
+            border-radius: 11px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.25rem;
-            margin-bottom: auto;
+            font-size: 1.2rem;
+            flex-shrink: 0;
         }
         
         .section-label {
@@ -799,10 +802,21 @@ def update_stats(start, end, time_filter, single_class):
     if filtered is None or len(filtered) == 0:
         return "0", str(len(metrics_df)) if metrics_df is not None else "—", "—"
     
-    # Format numbers to fit in stat boxes
-    trips = format_number(len(filtered))
+    # Format numbers to fit in stat boxes - handle both small and large numbers
+    trip_count = len(filtered)
+    if trip_count >= 1000000:
+        trips = f"{trip_count/1000000:.1f}M"
+    elif trip_count >= 10000:
+        trips = f"{trip_count/1000:.1f}K"
+    elif trip_count >= 1000:
+        trips = f"{trip_count/1000:.2f}K"
+    else:
+        trips = f"{trip_count:,}"
+    
+    # Clusters - always show full number since it's typically small
     clusters = str(len(metrics_df)) if metrics_df is not None else "—"
     
+    # Average fare - show with dollar sign and 2 decimals
     if 'total_amount' in filtered.columns:
         avg_fare = filtered['total_amount'].mean()
         avg_fare_str = f"${avg_fare:.2f}"
@@ -826,13 +840,13 @@ def update_map_info(map_type):
     elif map_type == 'heatmap':
         return html.Div([
             html.Div("🔥 Density Heatmap", className='info-box-title'),
-            html.Div("Warmer colors (red/orange) show areas with high pickup density, while cooler colors (blue/purple) indicate fewer pickups. This helps identify the busiest zones across NYC.")
+            html.Div("Warmer colors (red/yellow) show areas with high pickup density where many taxis are requested, while cooler colors (blue/green) indicate fewer pickups. This visualization helps identify the busiest zones across NYC and understand spatial demand patterns.")
         ], className='info-box')
     
     elif map_type == 'clusters':
         return html.Div([
             html.Div("🎯 DBSCAN Clusters", className='info-box-title'),
-            html.Div("Each circle represents a cluster of nearby pickup points identified by the DBSCAN algorithm. Larger circles indicate more pickups in that cluster. This reveals distinct pickup hotspots.")
+            html.Div("Each circle represents a density-based cluster identified by the DBSCAN algorithm (eps=60m, min_samples=50). Larger circles indicate more pickups in that hotspot. This reveals distinct pickup concentration areas and eliminates noise points for clearer pattern identification.")
         ], className='info-box')
     
     return None
