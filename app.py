@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
-server = app.server 
+server = app.server
 app.title = "NYC Taxi Analytics"
 
 # ================================
@@ -29,84 +29,68 @@ SAMPLE_SIZE = 200000
 CACHE_DIR = "data_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-
+# ================================
+# DOWNLOAD FILES
+# ================================
 def download_cached(file_id, filename):
-    """
-    Downloads file only once and reuses it.
-    Prevents repeated 700MB downloads.
-    """
     cached_path = os.path.join(CACHE_DIR, filename)
-
     if os.path.exists(cached_path):
         print(f"✓ Using cached file: {cached_path}")
         return cached_path
-    
     url = f"https://drive.google.com/uc?id={file_id}"
     print(f"⬇ Downloading → {cached_path}")
     gdown.download(url, cached_path, quiet=False)
-
     return cached_path
-
 
 # ================================
 # LOAD DATA
 # ================================
 def load_data():
-    # ---- LOAD METRICS (CSV) ----
+    # ---- LOAD METRICS CSV ----
     try:
         metrics_path = download_cached(METRICS_ID, "metrics.csv")
         metrics_df = pd.read_csv(metrics_path)
         print(f"✓ Loaded Metrics: {len(metrics_df)} rows")
     except Exception as e:
         print("❌ Failed loading metrics:", e)
-        metrics_df = None
+        metrics_df = pd.DataFrame()
 
-    # ---- LOAD MERGED SAMPLE (GEOJSON) ----
+    # ---- LOAD MERGED GEOJSON ----
     try:
         merged_path = download_cached(MERGED_ID, "merged_sample.geojson")
         taxi_df = gpd.read_file(merged_path)
         print(f"✓ Loaded Taxi Data: {len(taxi_df)} rows")
 
-        # Limit dataset like old SAMPLE_SIZE logic
+        # Limit dataset like SAMPLE_SIZE logic
         if len(taxi_df) > SAMPLE_SIZE:
             taxi_df = taxi_df.sample(SAMPLE_SIZE, random_state=42)
             print(f"✓ Sampled down to {SAMPLE_SIZE:,} rows")
 
         # ---- Normalize Datetime Column ----
-        if "tpep_pickup_datetime" in taxi_df.columns:
-            taxi_df["pickup_datetime"] = pd.to_datetime(taxi_df["tpep_pickup_datetime"])
-            print("✓ Using tpep_pickup_datetime → pickup_datetime")
-
-        elif "lpep_pickup_datetime" in taxi_df.columns:
-            taxi_df["pickup_datetime"] = pd.to_datetime(taxi_df["lpep_pickup_datetime"])
-            print("✓ Using lpep_pickup_datetime → pickup_datetime")
-
-        elif "datetime" in taxi_df.columns:
-            taxi_df["pickup_datetime"] = pd.to_datetime(taxi_df["datetime"])
-            print("✓ Using datetime → pickup_datetime")
-
+        for col in ["tpep_pickup_datetime", "lpep_pickup_datetime", "datetime"]:
+            if col in taxi_df.columns:
+                taxi_df["pickup_datetime"] = pd.to_datetime(taxi_df[col])
+                break
         else:
-            raise ValueError("❌ No valid datetime column found!")
+            taxi_df["pickup_datetime"] = pd.to_datetime("2015-01-01")
 
     except Exception as e:
         print("❌ Error loading GeoJSON:", e)
-        taxi_df = None
+        taxi_df = pd.DataFrame(columns=["pickup_datetime"])
 
     return metrics_df, taxi_df
-
 
 # ================================
 # DATE RANGE DETECTION
 # ================================
 def detect_available_dates(df):
-    if df is None or "pickup_datetime" not in df.columns:
+    if df.empty or "pickup_datetime" not in df.columns:
         return [{'start': datetime(2015,1,1).date(),
                  'end': datetime(2015,1,31).date(),
                  'label': 'January 2015'}]
 
     df["year_month"] = df["pickup_datetime"].dt.to_period("M")
     date_ranges = []
-
     for period in sorted(df["year_month"].unique()):
         subset = df[df["year_month"] == period]
         date_ranges.append({
@@ -114,9 +98,7 @@ def detect_available_dates(df):
             "end": subset["pickup_datetime"].max().date(),
             "label": period.strftime("%B %Y")
         })
-
     return date_ranges
-
 
 # ================================
 # INITIAL LOAD
@@ -124,12 +106,12 @@ def detect_available_dates(df):
 metrics_df, taxi_df = load_data()
 AVAILABLE_DATES = detect_available_dates(taxi_df)
 
+data_min_date = AVAILABLE_DATES[0]['start']
+data_max_date = AVAILABLE_DATES[-1]['end']
+
 print("\n✓ Available Date Ranges:")
 for r in AVAILABLE_DATES:
     print(f" → {r['label']} ({r['start']} → {r['end']})")
-
-data_min_date = AVAILABLE_DATES[0]['start']
-data_max_date = AVAILABLE_DATES[-1]['end']
 
 
 
@@ -1397,6 +1379,6 @@ def update_cluster_chart(_):
         )
         return fig
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8050))  # use Render's PORT if set, else 8050
-    app.run_server(host="0.0.0.0", port=port)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8050))
+    app.run(host="0.0.0.0", port=port)
