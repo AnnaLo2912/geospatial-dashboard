@@ -9,3 +9,6 @@ shapely
 scikit-learn
 contextily
 matplotlib
+gdown
+fiona
+requests
