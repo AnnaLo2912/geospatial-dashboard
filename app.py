@@ -1379,3 +1379,7 @@ def update_cluster_chart(_):
         )
         return fig
 
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 8050))  # Use Render's PORT or default 8050
+    app.run(host="0.0.0.0", port=port, debug=True)
