@@ -8,103 +8,109 @@ from datetime import datetime, timedelta
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "NYC Taxi Analytics"
+# ============================================
+# DATA LOADING (Assets Version for Deployment)
+# ============================================
 
-# ============================================
-# DATA LOADING
-# ============================================
+import pandas as pd
+from datetime import datetime
+
 SAMPLE_SIZE = 200000
 
+# Folder where Render + Dash will reliably load static data
+DATA_FOLDER = "assets/data/"
+
+
 def load_data():
-    """Load taxi data - matching DBSCAN sample size"""
+    """Load taxi data + cluster metrics from assets/data/"""
+
     metrics_df = None
     taxi_df = None
-    
+
+    # ---- LOAD METRICS ----
     try:
-        metrics_df = pd.read_csv('outputs/dbscan_cluster_metrics.csv')
+        metrics_df = pd.read_csv(DATA_FOLDER + "dbscan_cluster_metrics.csv")
         print(f"✓ Loaded {len(metrics_df)} clusters from DBSCAN analysis")
-        print(f"  Columns: {list(metrics_df.columns)}")
-        if len(metrics_df) > 0:
-            print(f"  Sample data:")
-            print(metrics_df.head(2))
     except Exception as e:
         print(f"⚠ Could not load cluster metrics: {e}")
-    
+
+    # ---- LOAD TAXI TRIPS ----
     try:
-        print(f"\nLoading {SAMPLE_SIZE:,} taxi trips from outputs folder...")
+        print(f"\nLoading taxi sample ({SAMPLE_SIZE:,} rows)...")
+
         taxi_df = pd.read_csv(
-            'outputs/merged_cleaned_taxi_data.csv',
+            DATA_FOLDER + "merged_cleaned_taxi_data.csv",
             nrows=SAMPLE_SIZE,
             low_memory=False
         )
-        
-        print(f"  Columns in taxi data: {list(taxi_df.columns[:10])}...")
-        
+
+        # Normalize date column
         if 'tpep_pickup_datetime' in taxi_df.columns:
             taxi_df['pickup_datetime'] = pd.to_datetime(taxi_df['tpep_pickup_datetime'])
         elif 'pickup_datetime' in taxi_df.columns:
             taxi_df['pickup_datetime'] = pd.to_datetime(taxi_df['pickup_datetime'])
-        
+
         print(f"✓ Loaded {len(taxi_df):,} trips")
-        
-        if 'pickup_datetime' in taxi_df.columns:
-            print(f"✓ Date range: {taxi_df['pickup_datetime'].min()} to {taxi_df['pickup_datetime'].max()}")
-            monthly_counts = taxi_df.groupby(taxi_df['pickup_datetime'].dt.to_period('M')).size().sort_index()
-            print(f"\n📊 Data breakdown by month:")
-            for period, count in monthly_counts.items():
-                print(f"   {period}: {count:,} trips")
-        
+
     except Exception as e:
         print(f"❌ Error loading taxi data: {e}")
-        import traceback
-        traceback.print_exc()
         taxi_df = None
-    
+
     return metrics_df, taxi_df
 
+
+
 def detect_available_dates(df):
-    """Dynamically detect available date ranges from the data"""
+    """Detect available date ranges dynamically."""
     if df is None or 'pickup_datetime' not in df.columns:
-        return [
-            {'start': datetime(2015, 1, 1).date(), 'end': datetime(2015, 1, 31).date(), 'label': 'January 2015'}
-        ]
-    
+        return [{
+            'start': datetime(2015, 1, 1).date(),
+            'end': datetime(2015, 1, 31).date(),
+            'label': 'January 2015'
+        }]
+
     df['year_month'] = df['pickup_datetime'].dt.to_period('M')
     available_periods = df['year_month'].unique()
-    
+
     date_ranges = []
     for period in sorted(available_periods):
-        period_data = df[df['year_month'] == period]
-        start_date = period_data['pickup_datetime'].min().date()
-        end_date = period_data['pickup_datetime'].max().date()
-        month_name = period.strftime('%B %Y')
-        
+        month_data = df[df['year_month'] == period]
+        start_date = month_data['pickup_datetime'].min().date()
+        end_date = month_data['pickup_datetime'].max().date()
+
         date_ranges.append({
             'start': start_date,
             'end': end_date,
-            'label': month_name
+            'label': period.strftime('%B %Y')
         })
-    
+
     return date_ranges
 
-def format_number(num):
-    """Format large numbers to fit nicely in stat boxes"""
-    if num >= 1000000:
-        return f"{num/1000000:.1f}M"
-    elif num >= 1000:
-        return f"{num/1000:.1f}K"
-    else:
-        return f"{int(num)}"
 
+
+def format_number(num):
+    if num >= 1_000_000:
+        return f"{num/1_000_000:.1f}M"
+    elif num >= 1_000:
+        return f"{num/1_000:.1f}K"
+    else:
+        return str(int(num))
+
+
+
+# ---- LOAD EVERYTHING ----
 metrics_df, taxi_df = load_data()
 AVAILABLE_DATES = detect_available_dates(taxi_df)
 
-actual_trip_count = len(taxi_df) if taxi_df is not None else SAMPLE_SIZE
-print(f"\n✓ Dashboard will display {len(AVAILABLE_DATES)} date range(s)")
-for i, date_range in enumerate(AVAILABLE_DATES):
-    print(f"   [{i}] {date_range['label']}: {date_range['start']} to {date_range['end']}")
+print("\nAvailable Date Ranges:")
+for d in AVAILABLE_DATES:
+    print(f" - {d['label']} ({d['start']} → {d['end']})")
 
-data_min_date = AVAILABLE_DATES[0]['start']
-data_max_date = AVAILABLE_DATES[0]['end']
+# Set default min/max
+if AVAILABLE_DATES:
+    data_min_date = AVAILABLE_DATES[0]['start']
+    data_max_date = AVAILABLE_DATES[-1]['end']
+
 
 # ============================================
 # STYLING
