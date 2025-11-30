@@ -150,13 +150,18 @@ app.index_string = '''
             min-height: 100vh;
         }
         
-        .glass-card {
-            background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 16px;
-            padding: 24px;
-        }
+      .glass-card {
+    overflow: visible !important;
+    position: static !important;
+    z-index: auto !important;
+}
+.glass-card .js-plotly-plot,
+.glass-card .plot-container,
+.glass-card .plotly {
+    overflow: visible !important;
+    position: relative !important;
+    z-index: 1 !important;
+}
         
         .stat-card {
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.6));
@@ -371,6 +376,7 @@ app.index_string = '''
             .grid-3 { grid-template-columns: 1fr !important; }
             .stat-value { font-size: 1.5rem; }
         }
+        
     </style>
 </head>
 <body>
